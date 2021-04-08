@@ -15,11 +15,14 @@ use std::iter;
 use petgraph::algo;
 use petgraph::graph::NodeIndex;
 use petgraph::stable_graph::{StableDiGraph, StableUnGraph};
+use petgraph::visit::{EdgeRef, IntoEdgeReferences};
 
 use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use pyo3::Python;
+
+use hashbrown::HashMap;
 
 use super::digraph;
 use super::graph;
@@ -1073,9 +1076,26 @@ pub fn hexagonal_graph(
         nodes[(collen - 1) * rowlen + (rowlen - 1) * ((collen - 1) % 2)],
     );
 
+    // Re-indexing nodes
+    let mut new_graph = StableUnGraph::<PyObject, PyObject>::default();
+    let mut id_map: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+
+    for node_index in graph.node_indices() {
+        let node_data = graph.node_weight(node_index).unwrap();
+        let new_index = new_graph.add_node(node_data.clone_ref(py));
+        id_map.insert(node_index, new_index);
+    }
+
+    for edge in graph.edge_references() {
+        let edge_w = edge.weight();
+        let p_index = id_map[&edge.source()];
+        let c_index = id_map[&edge.target()];
+        new_graph.add_edge(p_index, c_index, edge_w.clone_ref(py));
+    }
+
     Ok(graph::PyGraph {
-        graph,
-        node_removed: true,
+        graph: new_graph,
+        node_removed: false,
         multigraph,
     })
 }
